@@ -1,6 +1,6 @@
 import os
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, Boolean, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 
@@ -118,22 +118,22 @@ def init_db():
     # Ensure discord fields exist for existing sqlite database
     try:
         with engine.begin() as conn:
-            conn.execute("ALTER TABLE applications ADD COLUMN discord_guild_id VARCHAR")
+            conn.execute(text("ALTER TABLE applications ADD COLUMN discord_guild_id VARCHAR"))
     except Exception:
         pass
     try:
         with engine.begin() as conn:
-            conn.execute("ALTER TABLE applications ADD COLUMN discord_channel_id VARCHAR")
+            conn.execute(text("ALTER TABLE applications ADD COLUMN discord_channel_id VARCHAR"))
     except Exception:
         pass
     try:
         with engine.begin() as conn:
-            conn.execute("ALTER TABLE applications ADD COLUMN discord_guild_name VARCHAR")
+            conn.execute(text("ALTER TABLE applications ADD COLUMN discord_guild_name VARCHAR"))
     except Exception:
         pass
     try:
         with engine.begin() as conn:
-            conn.execute("ALTER TABLE applications ADD COLUMN discord_channel_name VARCHAR")
+            conn.execute(text("ALTER TABLE applications ADD COLUMN discord_channel_name VARCHAR"))
     except Exception:
         pass
 
