@@ -57,6 +57,11 @@ class Application(Base):
     dev_message = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
+    discord_guild_id = Column(String, nullable=True)
+    discord_channel_id = Column(String, nullable=True)
+    discord_guild_name = Column(String, nullable=True)
+    discord_channel_name = Column(String, nullable=True)
+
     # Relationships
     creator = relationship("Creator", back_populates="applications")
     users = relationship("AppUser", back_populates="application", cascade="all, delete-orphan")
@@ -110,6 +115,27 @@ class AppLicense(Base):
 
 def init_db():
     Base.metadata.create_all(bind=engine)
+    # Ensure discord fields exist for existing sqlite database
+    try:
+        with engine.begin() as conn:
+            conn.execute("ALTER TABLE applications ADD COLUMN discord_guild_id VARCHAR")
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.execute("ALTER TABLE applications ADD COLUMN discord_channel_id VARCHAR")
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.execute("ALTER TABLE applications ADD COLUMN discord_guild_name VARCHAR")
+    except Exception:
+        pass
+    try:
+        with engine.begin() as conn:
+            conn.execute("ALTER TABLE applications ADD COLUMN discord_channel_name VARCHAR")
+    except Exception:
+        pass
 
 def get_db():
     db = SessionLocal()
