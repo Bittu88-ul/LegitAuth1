@@ -45,7 +45,7 @@ namespace Auth
         
         private static bool initialized = false;
         private static readonly HttpClient client = new HttpClient();
-        private static string _apiUrl = "http://127.0.0.1:8000/api/client";
+        private static string _apiUrl = "https://legitauth1-3.onrender.com/api/client";
 
         public static void init(string _name, string _ownerid, string _secret, string _version)
         {
