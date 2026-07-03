@@ -91,9 +91,11 @@ async function loadApps() {
         
         const list = document.getElementById('app-list');
         const selector = document.getElementById('app-selector');
+        const discordSelector = document.getElementById('discord-app-selector');
         
         list.innerHTML = '';
         if (selector) selector.innerHTML = '<option value="">-- Select an App --</option>';
+        if (discordSelector) discordSelector.innerHTML = '<option value="">-- Select an App to Integrate --</option>';
         
         // Update Dashboard Stats
         document.getElementById('stat-apps').innerText = apps.length;
@@ -137,6 +139,14 @@ async function loadApps() {
                 opt.value = app.id;
                 opt.text = app.app_name;
                 selector.appendChild(opt);
+            }
+
+            // Discord Dropdown Option
+            if (discordSelector) {
+                const opt = document.createElement('option');
+                opt.value = app.id;
+                opt.text = app.app_name;
+                discordSelector.appendChild(opt);
             }
         });
     } catch (e) {
@@ -587,6 +597,193 @@ function updateGrowthChart(usersCount, licensesCount) {
             }
         }
     });
+}
+
+let resolvedGuildId = null;
+let resolvedGuildName = null;
+
+async function switchDiscordApp(appId) {
+    if (!appId) {
+        document.getElementById('discord-integration-details').style.display = 'none';
+        return;
+    }
+    
+    document.getElementById('discord-integration-details').style.display = 'block';
+    
+    // Clear resolved invite info
+    document.getElementById('discord-invite-input').value = '';
+    document.getElementById('discord-resolved-wrapper').style.display = 'none';
+    
+    const app = currentApps.find(a => a.id == appId);
+    if (!app) return;
+    
+    const statusText = document.getElementById('discord-status-text');
+    const statusBadge = document.getElementById('discord-status-badge');
+    const unlinkBtn = document.getElementById('discord-unlink-btn');
+    
+    if (app.discord_guild_id && app.discord_channel_id) {
+        statusText.innerText = `Linked to server "${app.discord_guild_name}" in channel #${app.discord_channel_name}`;
+        statusBadge.innerText = 'Active';
+        statusBadge.style.background = 'rgba(16, 185, 129, 0.2)';
+        statusBadge.style.color = '#10b981';
+        statusBadge.style.borderColor = '#10b981';
+        unlinkBtn.style.display = 'inline-block';
+        
+        // Populate the resolved fields
+        resolvedGuildId = app.discord_guild_id;
+        resolvedGuildName = app.discord_guild_name;
+        document.getElementById('discord-resolved-guild-name').innerText = resolvedGuildName;
+        document.getElementById('discord-resolved-guild-id').innerText = resolvedGuildId;
+        
+        // Set invite url
+        document.getElementById('discord-invite-btn').href = `https://discord.com/oauth2/authorize?client_id=1522600480662880347&permissions=8&scope=bot%20applications.commands&guild_id=${resolvedGuildId}&disable_guild_select=true`;
+        
+        document.getElementById('discord-resolved-wrapper').style.display = 'block';
+        
+        // Load channels
+        await loadDiscordChannels(resolvedGuildId, app.discord_channel_id);
+    } else {
+        statusText.innerText = 'Not Configured';
+        statusBadge.innerText = 'Inactive';
+        statusBadge.style.background = 'rgba(239, 68, 68, 0.2)';
+        statusBadge.style.color = '#ef4444';
+        statusBadge.style.borderColor = '#ef4444';
+        unlinkBtn.style.display = 'none';
+    }
+}
+
+async function resolveDiscordInvite() {
+    const invite = document.getElementById('discord-invite-input').value.trim();
+    if (!invite) return showToast('Please enter an invite link or code', 'error');
+    
+    const token = localStorage.getItem('token');
+    try {
+        const res = await fetch(`${API_URL}/discord/resolve-invite?invite=${encodeURIComponent(invite)}`, {
+            headers: {'Authorization': `Bearer ${token}`}
+        });
+        const data = await res.json();
+        if (res.ok) {
+            resolvedGuildId = data.guild_id;
+            resolvedGuildName = data.guild_name;
+            document.getElementById('discord-resolved-guild-name').innerText = resolvedGuildName;
+            document.getElementById('discord-resolved-guild-id').innerText = resolvedGuildId;
+            
+            // Set invite URL
+            document.getElementById('discord-invite-btn').href = `https://discord.com/oauth2/authorize?client_id=1522600480662880347&permissions=8&scope=bot%20applications.commands&guild_id=${resolvedGuildId}&disable_guild_select=true`;
+            
+            document.getElementById('discord-resolved-wrapper').style.display = 'block';
+            showToast('Discord server found!', 'success');
+            
+            // Fetch channels
+            await loadDiscordChannels(resolvedGuildId);
+        } else {
+            showToast(data.detail || 'Could not resolve invite link', 'error');
+        }
+    } catch(e) {
+        showToast('Error resolving invite', 'error');
+    }
+}
+
+async function loadDiscordChannels(guildId, selectedChannelId = null) {
+    const token = localStorage.getItem('token');
+    const selector = document.getElementById('discord-channel-selector');
+    selector.innerHTML = '<option value="">-- Loading Channels --</option>';
+    
+    try {
+        const res = await fetch(`${API_URL}/discord/channels?guild_id=${guildId}`, {
+            headers: {'Authorization': `Bearer ${token}`}
+        });
+        const channels = await res.json();
+        if (res.ok) {
+            selector.innerHTML = '<option value="">-- Choose Channel --</option>';
+            channels.forEach(ch => {
+                const opt = document.createElement('option');
+                opt.value = ch.id;
+                opt.text = `#${ch.name}`;
+                if (selectedChannelId && ch.id == selectedChannelId) {
+                    opt.selected = true;
+                }
+                selector.appendChild(opt);
+            });
+        } else {
+            selector.innerHTML = '<option value="">-- Invite bot first, then refresh --</option>';
+            showToast('Make sure the Bot is invited to your server before selecting a channel!', 'warning');
+        }
+    } catch(e) {
+        selector.innerHTML = '<option value="">-- Error loading channels --</option>';
+    }
+}
+
+async function saveDiscordConfig() {
+    const appId = document.getElementById('discord-app-selector').value;
+    const channelId = document.getElementById('discord-channel-selector').value;
+    const channelSelector = document.getElementById('discord-channel-selector');
+    const channelName = channelSelector.options[channelSelector.selectedIndex]?.text.replace('#', '') || '';
+    
+    if (!channelId) return showToast('Please select an operating channel', 'error');
+    
+    const token = localStorage.getItem('token');
+    try {
+        const res = await fetch(`${API_URL}/apps/${appId}/discord`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                discord_guild_id: resolvedGuildId,
+                discord_channel_id: channelId,
+                discord_guild_name: resolvedGuildName,
+                discord_channel_name: channelName
+            })
+        });
+        if (res.ok) {
+            showToast('Discord configuration saved successfully!', 'success');
+            await loadApps();
+            // Re-select to update the status card view
+            document.getElementById('discord-app-selector').value = appId;
+            await switchDiscordApp(appId);
+        } else {
+            const data = await res.json();
+            showToast(data.detail || 'Failed to save configuration', 'error');
+        }
+    } catch(e) {
+        showToast('Error saving Discord config', 'error');
+    }
+}
+
+async function unlinkDiscordConfig() {
+    if (!confirm('Are you sure you want to unlink Discord from this application?')) return;
+    
+    const appId = document.getElementById('discord-app-selector').value;
+    const token = localStorage.getItem('token');
+    try {
+        const res = await fetch(`${API_URL}/apps/${appId}/discord`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                discord_guild_id: null,
+                discord_channel_id: null,
+                discord_guild_name: null,
+                discord_channel_name: null
+            })
+        });
+        if (res.ok) {
+            showToast('Discord integration removed.', 'info');
+            await loadApps();
+            // Re-select to update UI
+            document.getElementById('discord-app-selector').value = appId;
+            await switchDiscordApp(appId);
+        } else {
+            const data = await res.json();
+            showToast(data.detail || 'Failed to unlink', 'error');
+        }
+    } catch(e) {
+        showToast('Error unlinking Discord integration', 'error');
+    }
 }
 
 // Check auth on load
