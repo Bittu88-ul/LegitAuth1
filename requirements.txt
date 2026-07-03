@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+sqlalchemy
+passlib[bcrypt]
+pydantic[email]
+PyJWT
+requests
+google-auth
+psycopg2-binary
