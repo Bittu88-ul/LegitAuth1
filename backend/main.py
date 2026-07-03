@@ -4,6 +4,10 @@ import secrets
 import re
 from datetime import datetime, timedelta
 from typing import Optional, List
+from dotenv import load_dotenv
+
+# Load environment variables from the discord_bot directory
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), "discord_bot", ".env"))
 from fastapi import FastAPI, Depends, HTTPException, status, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -27,9 +31,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import subprocess
+import sys
+
 @app.on_event("startup")
 def startup_event():
     init_db()
+    
+    # Start the Discord Bot in the background
+    bot_token = os.getenv("DISCORD_BOT_TOKEN")
+    if bot_token and "YOUR_DISCORD_BOT_TOKEN_HERE" not in bot_token:
+        try:
+            bot_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "discord_bot", "bot.py")
+            print(f"Starting Discord Bot in the background: {bot_path}")
+            subprocess.Popen(
+                [sys.executable, bot_path],
+                cwd=os.path.dirname(bot_path),
+                env=os.environ.copy()
+            )
+        except Exception as e:
+            print(f"Failed to start Discord Bot: {e}")
 
 # --- Pydantic Schemas ---
 class EmailRequest(BaseModel):
@@ -90,6 +111,12 @@ class ClientLoginRequest(BaseModel):
     password: Optional[str] = None
     license_key: Optional[str] = None
     hwid: str
+
+class DiscordConfigRequest(BaseModel):
+    discord_guild_id: Optional[str] = None
+    discord_channel_id: Optional[str] = None
+    discord_guild_name: Optional[str] = None
+    discord_channel_name: Optional[str] = None
 
 # --- Authentication Dependency ---
 def get_current_creator(authorization: Optional[str] = Header(None), db: Session = Depends(get_db)) -> Creator:
@@ -169,7 +196,7 @@ def log_app_action(db: Session, app_id: int, action: str, description: str):
 @app.get("/api/creator/apps")
 def get_creator_apps(current_creator: Creator = Depends(get_current_creator), db: Session = Depends(get_db)):
     applications = db.query(Application).filter(Application.creator_id == current_creator.id).all()
-    return [{"id": app.id, "app_name": app.app_name, "owner_id": app.owner_id, "secret": app.secret, "status": app.status, "webhook_url": app.webhook_url, "version": app.version, "dev_message": app.dev_message, "created_at": app.created_at} for app in applications]
+    return [{"id": app.id, "app_name": app.app_name, "owner_id": app.owner_id, "secret": app.secret, "status": app.status, "webhook_url": app.webhook_url, "version": app.version, "dev_message": app.dev_message, "created_at": app.created_at, "discord_guild_id": app.discord_guild_id, "discord_channel_id": app.discord_channel_id, "discord_guild_name": app.discord_guild_name, "discord_channel_name": app.discord_channel_name} for app in applications]
 
 @app.post("/api/creator/apps/create")
 def create_app(req: AppCreateRequest, current_creator: Creator = Depends(get_current_creator), db: Session = Depends(get_db)):
@@ -330,6 +357,66 @@ def get_app_logs(app_id: int, current_creator: Creator = Depends(get_current_cre
     logs = db.query(AppLog).filter(AppLog.app_id == app.id).order_by(AppLog.id.desc()).limit(50).all()
     return [{"id": l.id, "action": l.action, "description": l.description, "created_at": l.created_at.isoformat()} for l in logs]
 
+DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+
+@app.get("/api/creator/discord/resolve-invite")
+def resolve_discord_invite(invite: str, current_creator: Creator = Depends(get_current_creator)):
+    code = invite.strip().split("/")[-1]
+    res = requests.get(f"https://discord.com/api/v9/invites/{code}")
+    if res.status_code != 200:
+        raise HTTPException(status_code=400, detail="Invalid Discord invite link or code")
+    data = res.json()
+    guild = data.get("guild")
+    if not guild:
+        raise HTTPException(status_code=400, detail="Invite is not for a server (guild)")
+    return {"guild_id": guild.get("id"), "guild_name": guild.get("name")}
+
+@app.get("/api/creator/discord/channels")
+def get_discord_channels(guild_id: str, current_creator: Creator = Depends(get_current_creator)):
+    if not DISCORD_BOT_TOKEN:
+        raise HTTPException(status_code=500, detail="DISCORD_BOT_TOKEN not configured on server")
+    headers = {"Authorization": f"Bot {DISCORD_BOT_TOKEN}"}
+    res = requests.get(f"https://discord.com/api/v9/guilds/{guild_id}/channels", headers=headers)
+    if res.status_code != 200:
+        raise HTTPException(status_code=400, detail="Could not fetch channels. Make sure the bot is invited to the server first.")
+    channels = res.json()
+    text_channels = [
+        {"id": c.get("id"), "name": c.get("name")}
+        for c in channels
+        if c.get("type") == 0
+    ]
+    return text_channels
+
+@app.put("/api/creator/apps/{app_id}/discord")
+def update_app_discord_config(app_id: int, req: DiscordConfigRequest, current_creator: Creator = Depends(get_current_creator), db: Session = Depends(get_db)):
+    app = db.query(Application).filter(Application.id == app_id, Application.creator_id == current_creator.id).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    app.discord_guild_id = req.discord_guild_id
+    app.discord_channel_id = req.discord_channel_id
+    app.discord_guild_name = req.discord_guild_name
+    app.discord_channel_name = req.discord_channel_name
+    db.commit()
+    return {"message": "Discord integration settings updated"}
+
+@app.get("/api/creator/discord/app-by-channel/{channel_id}")
+def get_app_by_discord_channel(channel_id: str, current_creator: Creator = Depends(get_current_creator), db: Session = Depends(get_db)):
+    app = db.query(Application).filter(
+        Application.creator_id == current_creator.id,
+        Application.discord_channel_id == channel_id
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="No application linked to this channel")
+    return {
+        "id": app.id,
+        "app_name": app.app_name,
+        "owner_id": app.owner_id,
+        "secret": app.secret,
+        "status": app.status,
+        "version": app.version,
+        "dev_message": app.dev_message
+    }
+
 def send_discord_webhook(url: str, message: str):
     if not url: return
     try:
@@ -389,12 +476,12 @@ def client_login(req: ClientLoginRequest, request: Request, db: Session = Depend
         if not user:
             log_app_action(db, app.id, "LOGIN_FAILED", f"Invalid user credentials: {username}")
             raise HTTPException(status_code=400, detail="Invalid username or password")
-        if user.status == "banned": 
-            log_app_action(db, app.id, "LOGIN_FAILED", f"Banned user tried to login: {req.username}")
+        if user.status == "banned":
+            log_app_action(db, app.id, "LOGIN_FAILED", f"Banned user tried to login: {username}")
             raise HTTPException(status_code=403, detail="Banned")
-            
-        if user.expires_at and datetime.utcnow() > user.expires_at: 
-            log_app_action(db, app.id, "LOGIN_FAILED", f"Expired user tried to login: {req.username}")
+
+        if user.expires_at and datetime.utcnow() > user.expires_at:
+            log_app_action(db, app.id, "LOGIN_FAILED", f"Expired user tried to login: {username}")
             raise HTTPException(status_code=403, detail="Expired")
         if not verify_password(req.password, user.password_hash): raise HTTPException(status_code=400, detail="Invalid password")
         
