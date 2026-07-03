@@ -50,6 +50,7 @@
                 <li><a href="#" onclick="showTab('workspace')"><i class="fas fa-briefcase"></i> Workspace</a></li>
                 <li><a href="#" onclick="showTab('docs')"><i class="fas fa-book"></i> Documentation</a></li>
                 <li><a href="#" onclick="showTab('settings')"><i class="fas fa-cog"></i> Settings</a></li>
+<li><a href="#" onclick="showTab('discord')"><i class="fab fa-discord"></i> Discord Bot</a></li>
                 <li style="margin-top: 50px;"><a href="#" onclick="logout()"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
             </ul>
         </nav>
@@ -177,6 +178,29 @@
             </div>
 
             <div id="docs-tab" class="tab-content" style="display:none;">
+    <!-- existing docs content -->
+</div>
+<div id="discord-tab" class="tab-content" style="display:none;">
+    <h2>LegitAuth Discord Bot</h2>
+    <p>This bot allows you to manage your LegitAuth applications directly from Discord.</p>
+    <h3>Setup Steps</h3>
+    <ol>
+        <li>Invite the bot to your server using the generated <strong>Invite URL</strong> (replace <code>{YOUR_CLIENT_ID}</code> with your bot's Client ID).</li>
+        <li>In any text channel, run <code>/set_channel #channel-name</code> (requires Manage Server permission) to designate where the bot will respond.</li>
+        <li>Use the following commands:
+            <ul>
+                <li><code>/list_apps</code> – List your LegitAuth applications.</li>
+                <li><code>/select_app &lt;app_id&gt;</code> – Choose an app to work with.</li>
+                <li><code>/create_user &lt;username&gt; &lt;password&gt; [expires_at] [hwid_lock]</code> – Add a user.</li>
+                <li><code>/create_license &lt;amount&gt; [duration_days] [expires_at] [hwid_lock]</code> – Generate licenses.</li>
+            </ul>
+        </li>
+    </ol>
+    <h3>Invite URL</h3>
+    <p>Copy and open this URL in your browser to add the bot to your server:</p>
+    <pre>https://discord.com/oauth2/authorize?client_id={YOUR_CLIENT_ID}&amp;scope=bot%20applications.commands&amp;permissions=274878057984</pre>
+    <p>Replace <code>{YOUR_CLIENT_ID}</code> with your bot's actual client ID (available in the Discord Developer Portal).</p>
+</div>
                 <h2>Developer Documentation</h2>
                 <p>Welcome to the LegitAuth integration guide. Choose your authentication method below.</p>
                 <a href="/download/auth" target="_blank"><button style="width:200px; margin-bottom: 20px;">Download Auth.cs</button></a>
