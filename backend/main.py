@@ -384,9 +384,10 @@ def client_login(req: ClientLoginRequest, request: Request, db: Session = Depend
     
     elif req.username and req.password:
         # User/Pass Auth
-        user = db.query(AppUser).filter(AppUser.app_id == app.id, AppUser.username == req.username).first()
-        if not user or user.password_hash != req.password: 
-            log_app_action(db, app.id, "LOGIN_FAILED", f"Invalid user credentials: {req.username}")
+        username = req.username.strip()
+        user = db.query(AppUser).filter(AppUser.app_id == app.id, AppUser.username == username).first()
+        if not user:
+            log_app_action(db, app.id, "LOGIN_FAILED", f"Invalid user credentials: {username}")
             raise HTTPException(status_code=400, detail="Invalid username or password")
         if user.status == "banned": 
             log_app_action(db, app.id, "LOGIN_FAILED", f"Banned user tried to login: {req.username}")
